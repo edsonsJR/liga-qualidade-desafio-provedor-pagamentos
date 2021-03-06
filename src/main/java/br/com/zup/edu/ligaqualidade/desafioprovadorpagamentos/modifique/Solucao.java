@@ -1,9 +1,12 @@
 package br.com.zup.edu.ligaqualidade.desafioprovadorpagamentos.modifique;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Solucao {
 
@@ -30,74 +33,84 @@ public class Solucao {
      * <p>
      * É esperado que o retorno respeite a ordem de recebimento
      */
-
-
-    //7
     public static List<String[]> executa(List<String> infoTransacoes, List<String> infoAdiantamentos) {
+        List<Transacao> transacoes = retornaTransacoes(infoTransacoes);
+        List<AdiantamentoRecebivel> adiantamentoRecebiveis = retornaAdiantamentoRecebiveis(infoAdiantamentos);
 
-        //1
-        TransacaoParaRecebivel transacaoParaRecebivel = null;
 
-        //1
-        AdiantamentoParaRecebivel adiantamentoParaRecebivel;
+        List<Recebivel> recebiveis = new LinkedList<>();
+        for (Transacao transacao : transacoes) {
+            Recebivel recebivel = criaRecebivel(transacao);
+            calculaTaxaAdiantamento(recebivel, transacao.getIdTransacao(), adiantamentoRecebiveis);
 
-        List<String> transacoes = new ArrayList<>();
-        List<String> adiantamentos = new ArrayList<>();
-
-        /*
-         * Quebra o String num array
-         * */
-        //1
-        for (String info : infoTransacoes) {
-            transacoes = Arrays.asList(info.split(","));
+            recebiveis.add(recebivel);
         }
 
-        //1
-        for (String info : infoAdiantamentos) {
-            adiantamentos = Arrays.asList(info.split(","));
+        return recebiveis
+                .stream()
+                .map(Recebivel::toStringArray)
+                .collect(Collectors.toList());
+    }
+
+    private static List<AdiantamentoRecebivel> retornaAdiantamentoRecebiveis(List<String> infoAdiantamentos) {
+        List<AdiantamentoRecebivel> adiantamentoRecebiveis = new LinkedList<>();
+
+        for (String adiantamentoStr : infoAdiantamentos) {
+            String[] adiantamentoAtual = adiantamentoStr.split(",");
+
+            adiantamentoRecebiveis.add(
+                    new AdiantamentoRecebivel(Integer.parseInt(adiantamentoAtual[0]),
+                            Double.parseDouble(adiantamentoAtual[1]))
+            );
         }
 
+        return adiantamentoRecebiveis;
+    }
 
-        /*
-         * Transforma a String em dados manipuláveis
-         * */
-        //1
-        for (int j = 0; j < transacoes.size(); j++) {
+    private static List<Transacao> retornaTransacoes(List<String> infoTransacoes) {
+        List<Transacao> transacoes = new LinkedList<>();
 
-            String valorNaoDecimal = transacoes.get(0);
-            String metodo = transacoes.get(1);
-            String validadeNaoData = transacoes.get(4);
+        for (String transacaoStr : infoTransacoes) {
+            String[] transacaoAtual = transacaoStr.split(",");
 
-            transacaoParaRecebivel = new TransacaoParaRecebivel(valorNaoDecimal, metodo, validadeNaoData);
+            transacoes.add(new Transacao(
+                   Double.parseDouble(transacaoAtual[0]),
+                   transacaoAtual[1],
+                   transacaoAtual[2],
+                   transacaoAtual[3],
+                    LocalDate.parse(transacaoAtual[4], DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                   Integer.parseInt(transacaoAtual[5]),
+                   Integer.parseInt(transacaoAtual[6])
+            ));
         }
 
-        //1
-        for (int k = 0; k < adiantamentos.size(); k++) {
-            String idTransacaoString = adiantamentos.get(0);
-            String taxaNaoDecimal = adiantamentos.get(1);
+        return transacoes;
+    }
 
-            adiantamentoParaRecebivel = new AdiantamentoParaRecebivel(idTransacaoString, taxaNaoDecimal);
+    private static Recebivel criaRecebivel(Transacao transacao) {
+        Recebivel recebivel = new Recebivel();
+        recebivel.setValorOriginal(transacao.getValor());
 
+        if ("DEBITO".equals(transacao.getMetodoPagamento())) {
+            recebivel.setStatus("pago");
+            recebivel.setDtRecebimento(LocalDate.now());
+            recebivel.setValorReceber(transacao.getValor() - (transacao.getValor() * 0.03));
+        } else {
+            recebivel.setStatus("aguardando_pagamento");
+            recebivel.setDtRecebimento(LocalDate.now().plusDays(30));
+            recebivel.setValorReceber(transacao.getValor() - (transacao.getValor() * 0.05));
         }
 
-        /*
-         * Início da criação do recebível
-         * */
-        //1
-        Recebivel recebivel = criaRecebivel(transacaoParaRecebivel);
-        recebivel.prazoRecebimento();
+        return recebivel;
+    }
 
-        return List.of(new String[][]{
-                {"pago", "200", "194", "04/03/2021"}
+    private static void calculaTaxaAdiantamento(Recebivel recebivel, Integer transacaoId, List<AdiantamentoRecebivel> adiantamentoRecebiveis) {
+        adiantamentoRecebiveis.stream()
+                .filter(adiantamentoRecebivel -> adiantamentoRecebivel.getIdTransacao()
+                        .equals(transacaoId)).forEach(adiantamentoRecebivel -> {
+                            recebivel.setValorReceber(recebivel.getValorReceber()
+                                    - (recebivel.getValorReceber() * adiantamentoRecebivel.getTaxa()));
+                            recebivel.setDtRecebimento(LocalDate.now());
         });
-
-
     }
-
-    private static Recebivel criaRecebivel(TransacaoParaRecebivel transacao) {
-
-        return new Recebivel(transacao.getMetodoPagamento(), transacao.getValidade(), transacao.getValor());
-    }
-
-
 }
